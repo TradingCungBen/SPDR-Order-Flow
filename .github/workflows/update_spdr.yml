@@ -2,35 +2,39 @@ name: SPDR Bot Auto Update
 
 on:
   schedule:
-    # 00:00 giờ UTC tương đương với 07:00 sáng giờ Việt Nam
+    # 00:00 giờ UTC tương đương với 07:00 sáng giờ Việt Nam mỗi ngày
     - cron: '0 0 * * *' 
-  workflow_dispatch: # Tính năng này cho phép bạn bấm nút chạy thử bằng tay lúc nào cũng được
+  workflow_dispatch: # Nút bấm cho phép bạn chạy thử thủ công bất cứ lúc nào
 
 permissions:
-  contents: write # Cấp quyền cho Robot được phép lưu file CSV mới vào kho chứa
+  contents: write # Cấp quyền cho Robot đám mây được phép ghi đè file CSV vào kho chứa
 
 jobs:
   Cap-nhat-Du-Lieu:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Bước 1 - Mở kho chứa
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Bước 2 - Chuẩn bị máy tính ảo (Python 3.11)
-        uses: actions/setup-python@v4
+      - name: Bước 2 - Thiết lập môi trường Python ảo
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Bước 3 - Lấy đồ nghề (Cài thư viện)
-        run: pip install pandas requests openpyxl
+      - name: Bước 3 - Cài đặt thư viện (Đồ nghề)
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas requests openpyxl
 
-      - name: Bước 4 - Chạy Bot SPDR
+      - name: Bước 4 - Khởi động Bot SPDR
         run: python Bot_SPDR.py
 
-      - name: Bước 5 - Đóng gói và lưu file CSV lên GitHub
+      - name: Bước 5 - Đóng gói và Lưu file CSV lên nhánh Main
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add SPDR_Data_MT5.csv
+          # Lệnh echo giúp Bot không bị báo lỗi nếu hôm đó là ngày nghỉ lễ, SPDR không có dữ liệu mới
           git commit -m "Bot tự động cập nhật dữ liệu SPDR" -a || echo "Không có dữ liệu mới để lưu"
           git push
