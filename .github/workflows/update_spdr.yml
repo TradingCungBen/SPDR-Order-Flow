@@ -2,11 +2,12 @@ name: SPDR Bot Auto Update
 
 on:
   schedule:
+    # 00:00 giờ UTC tương đương với 07:00 sáng giờ Việt Nam mỗi ngày
     - cron: '0 0 * * *' 
-  workflow_dispatch: 
+  workflow_dispatch: # Nút bấm cho phép bạn chạy thử thủ công bất cứ lúc nào
 
 permissions:
-  contents: write 
+  contents: write # Cấp quyền cho Robot đám mây được phép ghi đè file CSV vào kho chứa
 
 jobs:
   Cap-nhat-Du-Lieu:
@@ -24,7 +25,7 @@ jobs:
       - name: Bước 3 - Cài đặt thư viện (Đồ nghề)
         run: |
           python -m pip install --upgrade pip
-          pip install pandas requests openpyxl yfinance
+          pip install pandas requests openpyxl
 
       - name: Bước 4 - Khởi động Hệ thống Bot Đa Luồng
         run: |
@@ -36,6 +37,6 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add .
-          git commit -m "V2 Nâng cấp: Chuẩn hóa tên cột Date, hold, ton, usd_flow" || echo "Không có dữ liệu mới"
-          git pull --rebase origin main
+          # Lệnh echo giúp Bot không bị báo lỗi nếu hôm đó là ngày nghỉ lễ, không có dữ liệu mới
+          git commit -m "Cập nhật dữ liệu SPDR, Các quỹ khác và Báo cáo tình trạng" || echo "Không có dữ liệu mới để lưu"
           git push
