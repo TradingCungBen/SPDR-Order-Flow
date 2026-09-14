@@ -6,12 +6,7 @@ import yfinance as yf
 
 FILE_NAME = "OTHER_ETFs_MT5.csv"
 STATUS_FILE = "ETF_Status.txt" 
-
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': '*/*'
-}
-
+headers = {'User-Agent': 'Mozilla/5.0'}
 fund_status = {}
 
 def get_gldm():
@@ -21,14 +16,12 @@ def get_gldm():
         if res.status_code == 200:
             excel_data = pd.read_excel(io.BytesIO(res.content), sheet_name=None)
             df = pd.DataFrame()
-            for sheet_name, sheet_df in excel_data.items():
+            for name, sheet_df in excel_data.items():
                 cols = [str(c).strip().lower() for c in sheet_df.columns]
                 if 'date' in cols and any('ounce' in c and 'total' in c for c in cols):
                     df = sheet_df
                     break
-            if df.empty:
-                fund_status['GLDM'] = "LOI: Khong tim thay cot Total Ounce"
-                return pd.DataFrame()
+            if df.empty: return pd.DataFrame()
             
             date_col = [c for c in df.columns if str(c).strip().lower() == 'date'][0]
             ounce_col = [c for c in df.columns if 'ounce' in str(c).strip().lower() and 'total' in str(c).strip().lower()][0]
@@ -39,10 +32,7 @@ def get_gldm():
             df = df.rename(columns={'Total Ounces': 'Ounces_GLDM'})
             fund_status['GLDM'] = "OK"
             return df[['Date', 'Ounces_GLDM']]
-        else:
-            fund_status['GLDM'] = f"LOI API: {res.status_code}"
-    except Exception as e:
-        fund_status['GLDM'] = f"LOI: {str(e)[:20]}"
+    except: pass
     return pd.DataFrame()
 
 def get_iau():
@@ -56,69 +46,46 @@ def get_iau():
             df = df.dropna(subset=['Date', 'Ounces_IAU'])
             fund_status['IAU'] = "OK"
             return df[['Date', 'Ounces_IAU']]
-    except Exception as e:
-        fund_status['IAU'] = f"LOI: {str(e)[:20]}"
-    return pd.DataFrame()
-
-def get_sgol():
-    fund_status['SGOL'] = "Chua hoat dong"
+    except: pass
     return pd.DataFrame()
 
 df_gldm = get_gldm()
 df_iau  = get_iau()
-df_sgol = get_sgol()
 
 now_str = datetime.datetime.now().strftime('%Y.%m.%d %H:%M')
-status_msg = f"Cap nhat: {now_str} UTC | "
-for fund, status in fund_status.items():
-    status_msg += f"[{fund}: {status}] "
-
-with open(STATUS_FILE, "w", encoding="utf-8") as f:
-    f.write(status_msg)
+status_msg = f"Cap nhat: {now_str} UTC | [GLDM: {fund_status.get('GLDM', 'Loi')}] [IAU: {fund_status.get('IAU', 'Loi')}]"
+with open(STATUS_FILE, "w", encoding="utf-8") as f: f.write(status_msg)
 
 df_master = df_gldm.copy()
 if not df_master.empty:
-    if not df_iau.empty:
-        df_master = pd.merge(df_master, df_iau, on='Date', how='left')
-    else:
-        df_master['Ounces_IAU'] = 0
+    if not df_iau.empty: df_master = pd.merge(df_master, df_iau, on='Date', how='left')
+    else: df_master['Ounces_IAU'] = 0
 
-    if not df_sgol.empty:
-        df_master = pd.merge(df_master, df_sgol, on='Date', how='left')
-    else:
-        df_master['Ounces_SGOL'] = 0
-
-    df_master['Total_Ounces_ROW'] = df_master['Ounces_GLDM'].fillna(0) + df_master['Ounces_IAU'].fillna(0) + df_master['Ounces_SGOL'].fillna(0)
+    df_master['Total_Ounces_ROW'] = df_master['Ounces_GLDM'].fillna(0) + df_master['Ounces_IAU'].fillna(0)
     df_master = df_master.sort_values(by='Date', ascending=True).reset_index(drop=True)
     df_master['Thay_Doi_Ounces'] = df_master['Total_Ounces_ROW'].diff()
 
+    # --- CHUẨN HÓA TÊN CỘT ---
     df_master['hold'] = (df_master['Total_Ounces_ROW'] / 32150.746568).round(2)
     df_master['ton'] = (df_master['Thay_Doi_Ounces'] / 32150.746568).round(2)
     df_master['ton'] = df_master['ton'].fillna(0)
 
-    # --- BẢN VÁ LỖI YAHOO FINANCE ---
-    print("Đang tải dữ liệu Giá vàng (GC=F)...")
     try:
-        gold_ticker = yf.Ticker("GC=F")
-        gold = gold_ticker.history(start="2024-01-01")
+        gold = yf.Ticker("GC=F").history(start="2024-01-01")
         if not gold.empty:
             gold_close = gold[['Close']].reset_index()
             gold_close.columns = ['Date', 'Gold_Price']
             gold_close['Date'] = pd.to_datetime(gold_close['Date']).dt.tz_localize(None).dt.normalize()
-            
             df_master = pd.merge(df_master, gold_close, on='Date', how='left')
             df_master['Gold_Price'] = df_master['Gold_Price'].ffill().bfill()
-            
             df_master['usd_flow'] = (df_master['Thay_Doi_Ounces'] * df_master['Gold_Price']).round(2)
-        else:
-            df_master['usd_flow'] = 0
-    except Exception as e:
-        df_master['usd_flow'] = 0
+        else: df_master['usd_flow'] = 0
+    except: df_master['usd_flow'] = 0
 
     df_master['usd_flow'] = df_master['usd_flow'].fillna(0)
-
     df_final = df_master[df_master['Date'] >= '2024-01-01'].copy()
+    
+    # Xuất đúng 4 cột chuẩn
     df_final = df_final[['Date', 'hold', 'ton', 'usd_flow']]
-
     if not df_final.empty:
         df_final.to_csv(FILE_NAME, index=False, date_format='%Y.%m.%d')
