@@ -18,17 +18,14 @@ def get_gldm():
     try:
         url = "https://api.spdrgoldshares.com/api/v1/historical-archive?product=gldm&exchange=NYSE&lang=en"
         res = requests.get(url, headers=headers, timeout=20)
-        
         if res.status_code == 200:
             excel_data = pd.read_excel(io.BytesIO(res.content), sheet_name=None)
             df = pd.DataFrame()
-            
             for sheet_name, sheet_df in excel_data.items():
                 cols = [str(c).strip().lower() for c in sheet_df.columns]
                 if 'date' in cols and any('ounce' in c and 'total' in c for c in cols):
                     df = sheet_df
                     break
-            
             if df.empty:
                 fund_status['GLDM'] = "LOI: Khong tim thay cot Total Ounce"
                 return pd.DataFrame()
@@ -67,7 +64,6 @@ def get_sgol():
     fund_status['SGOL'] = "Chua hoat dong"
     return pd.DataFrame()
 
-# ================= CHƯƠNG TRÌNH CHÍNH =================
 df_gldm = get_gldm()
 df_iau  = get_iau()
 df_sgol = get_sgol()
@@ -81,7 +77,6 @@ with open(STATUS_FILE, "w", encoding="utf-8") as f:
     f.write(status_msg)
 
 df_master = df_gldm.copy()
-
 if not df_master.empty:
     if not df_iau.empty:
         df_master = pd.merge(df_master, df_iau, on='Date', how='left')
@@ -93,40 +88,37 @@ if not df_master.empty:
     else:
         df_master['Ounces_SGOL'] = 0
 
-    # 1. Tính Tổng Ounce
     df_master['Total_Ounces_ROW'] = df_master['Ounces_GLDM'].fillna(0) + df_master['Ounces_IAU'].fillna(0) + df_master['Ounces_SGOL'].fillna(0)
     df_master = df_master.sort_values(by='Date', ascending=True).reset_index(drop=True)
     df_master['Thay_Doi_Ounces'] = df_master['Total_Ounces_ROW'].diff()
 
-    # 2. Tính các cột chuẩn (hold, ton)
     df_master['hold'] = (df_master['Total_Ounces_ROW'] / 32150.746568).round(2)
     df_master['ton'] = (df_master['Thay_Doi_Ounces'] / 32150.746568).round(2)
     df_master['ton'] = df_master['ton'].fillna(0)
 
-    # 3. Tích hợp dữ liệu Giá Vàng để tính USD Flow
-    print("Đang tải dữ liệu Giá vàng (XAUUSD) từ Yahoo Finance...")
+    # --- BẢN VÁ LỖI YAHOO FINANCE ---
+    print("Đang tải dữ liệu Giá vàng (GC=F)...")
     try:
-        gold = yf.download("XAUUSD=X", start="2024-01-01", progress=False)
-        gold_close = pd.DataFrame(gold['Close']).reset_index()
-        gold_close.columns = ['Date', 'Gold_Price']
-        gold_close['Date'] = pd.to_datetime(gold_close['Date']).dt.tz_localize(None).dt.normalize()
-        
-        df_master = pd.merge(df_master, gold_close, on='Date', how='left')
-        df_master['Gold_Price'] = df_master['Gold_Price'].ffill().bfill()
-        
-        # Dòng tiền = Ounce thay đổi * Giá đóng cửa
-        df_master['usd_flow'] = (df_master['Thay_Doi_Ounces'] * df_master['Gold_Price']).round(2)
-        df_master['usd_flow'] = df_master['usd_flow'].fillna(0)
+        gold_ticker = yf.Ticker("GC=F")
+        gold = gold_ticker.history(start="2024-01-01")
+        if not gold.empty:
+            gold_close = gold[['Close']].reset_index()
+            gold_close.columns = ['Date', 'Gold_Price']
+            gold_close['Date'] = pd.to_datetime(gold_close['Date']).dt.tz_localize(None).dt.normalize()
+            
+            df_master = pd.merge(df_master, gold_close, on='Date', how='left')
+            df_master['Gold_Price'] = df_master['Gold_Price'].ffill().bfill()
+            
+            df_master['usd_flow'] = (df_master['Thay_Doi_Ounces'] * df_master['Gold_Price']).round(2)
+        else:
+            df_master['usd_flow'] = 0
     except Exception as e:
-        print(f"Lỗi tải giá vàng: {e}")
         df_master['usd_flow'] = 0
 
-    # 4. Cắt dữ liệu và chốt 4 cột xuất file
+    df_master['usd_flow'] = df_master['usd_flow'].fillna(0)
+
     df_final = df_master[df_master['Date'] >= '2024-01-01'].copy()
-    
-    # Bố cục chuẩn quốc tế
     df_final = df_final[['Date', 'hold', 'ton', 'usd_flow']]
 
     if not df_final.empty:
         df_final.to_csv(FILE_NAME, index=False, date_format='%Y.%m.%d')
-        print(f"[{datetime.datetime.now()}] HOÀN TẤT! Đã đóng gói ra {FILE_NAME}")
