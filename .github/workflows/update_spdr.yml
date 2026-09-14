@@ -36,4 +36,6 @@ jobs:
           git config --local user.name "GitHub Action Bot"
           git add .
           git commit -m "Chuẩn hóa dữ liệu thành 4 cột: Date, hold, ton, usd_flow" || echo "Không có dữ liệu mới để lưu"
+          # Lệnh dưới đây giúp Bot lấy code mới nhất của bạn về trước khi đẩy file CSV lên
+          git pull --rebase origin main
           git push
