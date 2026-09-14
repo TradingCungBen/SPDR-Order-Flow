@@ -27,14 +27,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install pandas requests openpyxl
 
-      - name: Bước 4 - Khởi động Bot SPDR
-        run: python Bot_SPDR.py
+      - name: Bước 4 - Khởi động Hệ thống Bot Đa Luồng
+        run: |
+          python Bot_SPDR.py
+          python Bot_OTHER_ETFs.py
 
-      - name: Bước 5 - Đóng gói và Lưu file CSV lên nhánh Main
+      - name: Bước 5 - Đóng gói và Lưu Dữ liệu lên Đám mây
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add SPDR_Data_MT5.csv
-          # Lệnh echo giúp Bot không bị báo lỗi nếu hôm đó là ngày nghỉ lễ, SPDR không có dữ liệu mới
-          git commit -m "Bot tự động cập nhật dữ liệu SPDR" -a || echo "Không có dữ liệu mới để lưu"
+          git add SPDR_Data_MT5.csv OTHER_ETFs_MT5.csv ETF_Status.txt
+          # Lệnh echo giúp Bot không bị báo lỗi nếu hôm đó là ngày nghỉ lễ, không có dữ liệu mới
+          git commit -m "Cập nhật dữ liệu SPDR, Các quỹ khác và Báo cáo tình trạng" -a || echo "Không có dữ liệu mới để lưu"
           git push
