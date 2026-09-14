@@ -19,24 +19,23 @@ def get_gldm():
         res = requests.get(url, headers=headers, timeout=20)
         
         if res.status_code == 200:
-            # Thuật toán quét tất cả các Sheet trong file Excel
             excel_data = pd.read_excel(io.BytesIO(res.content), sheet_name=None)
             df = pd.DataFrame()
             
-            # Lục lọi tìm Sheet có chứa cột 'Date' và chữ 'Ounce'
             for sheet_name, sheet_df in excel_data.items():
                 cols = [str(c).strip().lower() for c in sheet_df.columns]
-                if 'date' in cols and any('ounce' in c for c in cols):
+                # BÍ QUYẾT: Yêu cầu sheet phải chứa cột có chữ 'total' và 'ounce'
+                if 'date' in cols and any('ounce' in c and 'total' in c for c in cols):
                     df = sheet_df
                     break
             
             if df.empty:
-                fund_status['GLDM'] = "LOI: Khong tim thay cot du lieu trong Excel"
+                fund_status['GLDM'] = "LOI: Khong tim thay cot Total Ounce"
                 return pd.DataFrame()
             
-            # Lấy chính xác tên cột gốc dù họ có viết hoa viết thường
             date_col = [c for c in df.columns if str(c).strip().lower() == 'date'][0]
-            ounce_col = [c for c in df.columns if 'ounce' in str(c).strip().lower()][0]
+            # KHÓA MỤC TIÊU: Bắt buộc tên cột phải chứa cả 'total' và 'ounce'
+            ounce_col = [c for c in df.columns if 'ounce' in str(c).strip().lower() and 'total' in str(c).strip().lower()][0]
             
             df['Total Ounces'] = pd.to_numeric(df[ounce_col], errors='coerce')
             df['Date'] = pd.to_datetime(df[date_col], errors='coerce')
@@ -47,7 +46,6 @@ def get_gldm():
         else:
             fund_status['GLDM'] = f"LOI API: {res.status_code}"
     except Exception as e:
-        # Bắt dính lỗi và in ra 20 ký tự đầu tiên để chuẩn đoán
         fund_status['GLDM'] = f"LOI: {str(e)[:20]}"
     return pd.DataFrame()
 
@@ -75,7 +73,6 @@ df_gldm = get_gldm()
 df_iau  = get_iau()
 df_sgol = get_sgol()
 
-# --- GHI BÁO CÁO RA FILE TEXT ---
 now_str = datetime.datetime.now().strftime('%Y.%m.%d %H:%M')
 status_msg = f"Cap nhat: {now_str} UTC | "
 for fund, status in fund_status.items():
@@ -83,9 +80,7 @@ for fund, status in fund_status.items():
 
 with open(STATUS_FILE, "w", encoding="utf-8") as f:
     f.write(status_msg)
-print("Báo cáo trạng thái:", status_msg)
 
-# --- XỬ LÝ DỮ LIỆU ---
 df_master = df_gldm.copy()
 
 if not df_master.empty:
