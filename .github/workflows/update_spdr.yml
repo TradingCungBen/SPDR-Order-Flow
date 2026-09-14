@@ -36,7 +36,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add SPDR_Data_MT5.csv OTHER_ETFs_MT5.csv ETF_Status.txt
+          git add .
           # Lệnh echo giúp Bot không bị báo lỗi nếu hôm đó là ngày nghỉ lễ, không có dữ liệu mới
-          git commit -m "Cập nhật dữ liệu SPDR, Các quỹ khác và Báo cáo tình trạng" -a || echo "Không có dữ liệu mới để lưu"
+          git commit -m "Cập nhật dữ liệu SPDR, Các quỹ khác và Báo cáo tình trạng" || echo "Không có dữ liệu mới để lưu"
           git push
