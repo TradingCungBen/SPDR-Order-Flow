@@ -2,17 +2,16 @@ name: SPDR Bot Auto Update
 
 on:
   schedule:
-    # 00:00 giờ UTC tương đương với 07:00 sáng giờ Việt Nam mỗi ngày
-    - cron: '0 0 * * *' 
-  workflow_dispatch: # Nút bấm cho phép bạn chạy thử thủ công bất cứ lúc nào
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 permissions:
-  contents: write # Cấp quyền cho Robot đám mây được phép ghi đè file CSV vào kho chứa
+  contents: write
 
 jobs:
   Cap-nhat-Du-Lieu:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Bước 1 - Mở kho chứa
         uses: actions/checkout@v4
@@ -25,21 +24,18 @@ jobs:
       - name: Bước 3 - Cài đặt thư viện (Đồ nghề)
         run: |
           python -m pip install --upgrade pip
-          pip install pandas requests openpyxl
-
+          # Đã thêm yfinance vào lệnh cài đặt dưới đây
+          pip install pandas requests openpyxl yfinance
       - name: Bước 4 - Khởi động Hệ thống Bot Đa Luồng
-        env:
-          OANDA_TOKEN: ${{ secrets.OANDA_TOKEN }} # Truyền Token bí mật vào Bot
         run: |
           python Bot_SPDR.py
           python Bot_OTHER_ETFs.py
-          python Bot_OANDA.py
-
       - name: Bước 5 - Đóng gói và Lưu Dữ liệu lên Đám mây
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add .
-          # Lệnh echo giúp Bot không bị báo lỗi nếu hôm đó là ngày nghỉ lễ, không có dữ liệu mới
-          git commit -m "Cập nhật dữ liệu SPDR, Các quỹ khác và Báo cáo tình trạng" || echo "Không có dữ liệu mới để lưu"
+          git commit -m "Chuẩn hóa dữ liệu thành 4 cột: Date, hold, ton, usd_flow" || echo "Không có dữ liệu mới để lưu"
+          # Lệnh dưới đây giúp Bot lấy code mới nhất của bạn về trước khi đẩy file CSV lên
+          git pull --rebase origin main
           git push
