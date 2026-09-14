@@ -2,6 +2,7 @@ import requests
 import pandas as pd
 import io
 import datetime
+import yfinance as yf
 
 FILE_NAME = "OTHER_ETFs_MT5.csv"
 STATUS_FILE = "ETF_Status.txt" 
@@ -24,7 +25,6 @@ def get_gldm():
             
             for sheet_name, sheet_df in excel_data.items():
                 cols = [str(c).strip().lower() for c in sheet_df.columns]
-                # BÍ QUYẾT: Yêu cầu sheet phải chứa cột có chữ 'total' và 'ounce'
                 if 'date' in cols and any('ounce' in c and 'total' in c for c in cols):
                     df = sheet_df
                     break
@@ -34,7 +34,6 @@ def get_gldm():
                 return pd.DataFrame()
             
             date_col = [c for c in df.columns if str(c).strip().lower() == 'date'][0]
-            # KHÓA MỤC TIÊU: Bắt buộc tên cột phải chứa cả 'total' và 'ounce'
             ounce_col = [c for c in df.columns if 'ounce' in str(c).strip().lower() and 'total' in str(c).strip().lower()][0]
             
             df['Total Ounces'] = pd.to_numeric(df[ounce_col], errors='coerce')
@@ -94,16 +93,40 @@ if not df_master.empty:
     else:
         df_master['Ounces_SGOL'] = 0
 
+    # 1. Tính Tổng Ounce
     df_master['Total_Ounces_ROW'] = df_master['Ounces_GLDM'].fillna(0) + df_master['Ounces_IAU'].fillna(0) + df_master['Ounces_SGOL'].fillna(0)
     df_master = df_master.sort_values(by='Date', ascending=True).reset_index(drop=True)
-
     df_master['Thay_Doi_Ounces'] = df_master['Total_Ounces_ROW'].diff()
-    df_master['Thay đổi (Tấn)'] = (df_master['Thay_Doi_Ounces'] / 32150.746568).round(2)
-    df_master['Tổng Vàng (Tấn)'] = (df_master['Total_Ounces_ROW'] / 32150.746568).round(2)
-    df_master['Thay đổi (Tấn)'] = df_master['Thay đổi (Tấn)'].fillna(0)
 
+    # 2. Tính các cột chuẩn (hold, ton)
+    df_master['hold'] = (df_master['Total_Ounces_ROW'] / 32150.746568).round(2)
+    df_master['ton'] = (df_master['Thay_Doi_Ounces'] / 32150.746568).round(2)
+    df_master['ton'] = df_master['ton'].fillna(0)
+
+    # 3. Tích hợp dữ liệu Giá Vàng để tính USD Flow
+    print("Đang tải dữ liệu Giá vàng (XAUUSD) từ Yahoo Finance...")
+    try:
+        gold = yf.download("XAUUSD=X", start="2024-01-01", progress=False)
+        gold_close = pd.DataFrame(gold['Close']).reset_index()
+        gold_close.columns = ['Date', 'Gold_Price']
+        gold_close['Date'] = pd.to_datetime(gold_close['Date']).dt.tz_localize(None).dt.normalize()
+        
+        df_master = pd.merge(df_master, gold_close, on='Date', how='left')
+        df_master['Gold_Price'] = df_master['Gold_Price'].ffill().bfill()
+        
+        # Dòng tiền = Ounce thay đổi * Giá đóng cửa
+        df_master['usd_flow'] = (df_master['Thay_Doi_Ounces'] * df_master['Gold_Price']).round(2)
+        df_master['usd_flow'] = df_master['usd_flow'].fillna(0)
+    except Exception as e:
+        print(f"Lỗi tải giá vàng: {e}")
+        df_master['usd_flow'] = 0
+
+    # 4. Cắt dữ liệu và chốt 4 cột xuất file
     df_final = df_master[df_master['Date'] >= '2024-01-01'].copy()
-    df_final = df_final[['Date', 'Tổng Vàng (Tấn)', 'Thay đổi (Tấn)']]
+    
+    # Bố cục chuẩn quốc tế
+    df_final = df_final[['Date', 'hold', 'ton', 'usd_flow']]
 
     if not df_final.empty:
         df_final.to_csv(FILE_NAME, index=False, date_format='%Y.%m.%d')
+        print(f"[{datetime.datetime.now()}] HOÀN TẤT! Đã đóng gói ra {FILE_NAME}")
