@@ -28,9 +28,12 @@ jobs:
           pip install pandas requests openpyxl
 
       - name: Bước 4 - Khởi động Hệ thống Bot Đa Luồng
+        env:
+          OANDA_TOKEN: ${{ secrets.OANDA_TOKEN }} # Truyền Token bí mật vào Bot
         run: |
           python Bot_SPDR.py
           python Bot_OTHER_ETFs.py
+          python Bot_OANDA.py
 
       - name: Bước 5 - Đóng gói và Lưu Dữ liệu lên Đám mây
         run: |
